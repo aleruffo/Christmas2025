@@ -1,16 +1,45 @@
 import { NextResponse } from "next/server";
 import { DateVote } from "@/types";
-import { kv } from "@vercel/kv";
-
-const KV_KEY = "availability_votes";
+import { redis } from "@/lib/redis";
 
 export async function GET() {
     try {
-        const votes = await kv.get<DateVote[]>(KV_KEY);
-        return NextResponse.json(votes || []);
+        // Get all dates that have at least one vote
+        const dates = await redis.smembers("availability:dates");
+
+        if (!dates || dates.length === 0) {
+            return NextResponse.json([]);
+        }
+
+        // Create a pipeline to get voters for all dates in one go
+        const pipeline = redis.pipeline();
+        dates.forEach(date => {
+            pipeline.smembers(`availability:date:${date}`);
+        });
+
+        const results = await pipeline.exec();
+
+        if (!results) {
+            return NextResponse.json([]);
+        }
+
+        const votes: DateVote[] = dates.map((date, index) => {
+            // ioredis pipeline results are [error, result] tuples
+            const [err, voters] = results[index];
+            if (err) {
+                console.error(`Error fetching voters for ${date}`, err);
+                return null;
+            }
+            return {
+                date,
+                count: (voters as string[]).length,
+                voters: (voters as string[])
+            };
+        }).filter((v): v is DateVote => v !== null && v.count > 0);
+
+        return NextResponse.json(votes);
     } catch (error) {
-        console.error("KV Error", error);
-        // Fallback to empty array if KV fails (e.g. missing env vars locally)
+        console.error("Redis Error", error);
         return NextResponse.json([]);
     }
 }
@@ -18,51 +47,35 @@ export async function GET() {
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { name, dates } = body;
+        const { name, date, action } = body;
 
-        if (!name || !Array.isArray(dates)) {
+        if (!name || !date || !['add', 'remove'].includes(action)) {
             return NextResponse.json({ error: "Invalid data" }, { status: 400 });
         }
 
-        const currentVotes = (await kv.get<DateVote[]>(KV_KEY)) || [];
+        const dateKey = `availability:date:${date}`;
+        const datesKey = "availability:dates";
 
-        // Reconstruct the Map-like structure for easier manipulation
-        // Map<DateString, Set<UserName>>
-        const voteMap = new Map<string, Set<string>>();
-
-        // Populate map from current data
-        currentVotes.forEach(v => {
-            voteMap.set(v.date, new Set(v.voters));
-        });
-
-        // Remove user from ALL dates first (to handle updates/unchecking)
-        voteMap.forEach((voters) => {
-            voters.delete(name);
-        });
-
-        // Add user to the new selected dates
-        dates.forEach((date: string) => {
-            if (!voteMap.has(date)) {
-                voteMap.set(date, new Set());
+        if (action === 'add') {
+            await redis.sadd(dateKey, name);
+            await redis.sadd(datesKey, date);
+        } else {
+            await redis.srem(dateKey, name);
+            // Check if any voters remain, if not remove date from index
+            const count = await redis.scard(dateKey);
+            if (count === 0) {
+                await redis.srem(datesKey, date);
             }
-            voteMap.get(date)?.add(name);
+        }
+
+        // Return updated votes for this specific date to keep client in sync
+        const voters = await redis.smembers(dateKey);
+
+        return NextResponse.json({
+            date,
+            count: voters.length,
+            voters
         });
-
-        // Convert back to array for storage
-        const newVotes: DateVote[] = [];
-        voteMap.forEach((voters, date) => {
-            if (voters.size > 0) {
-                newVotes.push({
-                    date,
-                    count: voters.size,
-                    voters: Array.from(voters)
-                });
-            }
-        });
-
-        await kv.set(KV_KEY, newVotes);
-
-        return NextResponse.json(newVotes);
     } catch (error) {
         console.error("API Error", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

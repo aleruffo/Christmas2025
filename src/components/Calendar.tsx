@@ -91,7 +91,6 @@ export function Calendar({ selectedDates, onToggleDate }: CalendarProps) {
                             {format(day, "d")}
                             {isSelected && (
                                 <motion.div
-                                    layoutId="check"
                                     className="absolute -top-1 -right-1 bg-white text-primary rounded-full p-0.5 shadow-sm"
                                     initial={{ scale: 0 }}
                                     animate={{ scale: 1 }}

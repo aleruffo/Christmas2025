@@ -60,27 +60,31 @@ export default function Home() {
   const handleToggleDate = async (date: string) => {
     if (!name) return;
 
-    const newDates = selectedDates.includes(date)
+    const isSelected = selectedDates.includes(date);
+    const action = isSelected ? 'remove' : 'add';
+
+    // Optimistic update
+    const newDates = isSelected
       ? selectedDates.filter(d => d !== date)
       : [...selectedDates, date];
-
     setSelectedDates(newDates);
 
-    // Optimistic update? Or just wait for server?
-    // Let's send to server immediately
     try {
       const res = await fetch("/api/availability", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, dates: newDates }),
+        body: JSON.stringify({ name, date, action }),
       });
 
       if (res.ok) {
-        const updatedVotes = await res.json();
-        setVotes(updatedVotes);
+        // We could update the single date vote here, but for simplicity and consistency
+        // let's just re-fetch all votes to ensure we have the latest state from everyone
+        fetchVotes();
       }
     } catch (error) {
       console.error("Failed to update availability", error);
+      // Revert optimistic update on error
+      setSelectedDates(selectedDates);
     }
   };
 
