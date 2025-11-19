@@ -1,22 +1,50 @@
 import { NextResponse } from "next/server";
 import { DateVote } from "@/types";
+import fs from "fs/promises";
+import path from "path";
 
-// In-memory storage
-// Map<dateString, Set<userName>>
-const votes = new Map<string, Set<string>>();
+const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_FILE = path.join(DATA_DIR, "votes.json");
+
+// Helper to ensure data directory and file exist
+async function ensureDataFile() {
+    try {
+        await fs.access(DATA_FILE);
+    } catch {
+        try {
+            await fs.mkdir(DATA_DIR, { recursive: true });
+            await fs.writeFile(DATA_FILE, JSON.stringify([]), "utf-8");
+        } catch (error) {
+            console.error("Failed to initialize data file", error);
+        }
+    }
+}
+
+// Helper to read votes
+async function readVotes(): Promise<DateVote[]> {
+    await ensureDataFile();
+    try {
+        const data = await fs.readFile(DATA_FILE, "utf-8");
+        return JSON.parse(data);
+    } catch (error) {
+        console.error("Failed to read votes", error);
+        return [];
+    }
+}
+
+// Helper to write votes
+async function writeVotes(votes: DateVote[]) {
+    await ensureDataFile();
+    try {
+        await fs.writeFile(DATA_FILE, JSON.stringify(votes, null, 2), "utf-8");
+    } catch (error) {
+        console.error("Failed to write votes", error);
+    }
+}
 
 export async function GET() {
-    const result: DateVote[] = [];
-
-    votes.forEach((voters, date) => {
-        result.push({
-            date,
-            count: voters.size,
-            voters: Array.from(voters)
-        });
-    });
-
-    return NextResponse.json(result);
+    const votes = await readVotes();
+    return NextResponse.json(votes);
 }
 
 export async function POST(request: Request) {
@@ -28,37 +56,35 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Invalid data" }, { status: 400 });
         }
 
-        // Remove user from all dates first (to handle updates/unchecking)
-        // Actually, for simplicity, let's assume the client sends the full list of *current* available dates for this user.
-        // But since we don't track per-user state easily without a DB, we'll just add them to the new dates.
-        // To do it properly in-memory: we need to know what they selected before? 
-        // Or we can just say: this endpoint adds availability.
-        // Let's make it simple: The user submits their *entire* availability.
-        // We need to clear their previous votes? That's hard without a user ID or storing per user.
-        // Let's store: Map<UserName, Set<Date>> as well?
+        const currentVotes = await readVotes();
 
-        // Better approach for this demo:
-        // Global state: Map<Date, Set<Name>>
-        // When user submits: 
-        // We iterate all dates in the map, remove user from them.
-        // Then add user to the new dates.
+        // Reconstruct the Map-like structure for easier manipulation
+        // Map<DateString, Set<UserName>>
+        const voteMap = new Map<string, Set<string>>();
 
-        votes.forEach((voters) => {
+        // Populate map from current file data
+        currentVotes.forEach(v => {
+            voteMap.set(v.date, new Set(v.voters));
+        });
+
+        // Remove user from ALL dates first (to handle updates/unchecking)
+        voteMap.forEach((voters) => {
             voters.delete(name);
         });
 
+        // Add user to the new selected dates
         dates.forEach((date: string) => {
-            if (!votes.has(date)) {
-                votes.set(date, new Set());
+            if (!voteMap.has(date)) {
+                voteMap.set(date, new Set());
             }
-            votes.get(date)?.add(name);
+            voteMap.get(date)?.add(name);
         });
 
-        // Return updated votes
-        const result: DateVote[] = [];
-        votes.forEach((voters, date) => {
+        // Convert back to array for storage
+        const newVotes: DateVote[] = [];
+        voteMap.forEach((voters, date) => {
             if (voters.size > 0) {
-                result.push({
+                newVotes.push({
                     date,
                     count: voters.size,
                     voters: Array.from(voters)
@@ -66,8 +92,11 @@ export async function POST(request: Request) {
             }
         });
 
-        return NextResponse.json(result);
+        await writeVotes(newVotes);
+
+        return NextResponse.json(newVotes);
     } catch (error) {
+        console.error("API Error", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

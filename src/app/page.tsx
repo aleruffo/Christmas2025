@@ -15,11 +15,20 @@ export default function Home() {
 
   // Fetch initial votes and check local storage
   useEffect(() => {
-    fetchVotes();
-    const savedName = localStorage.getItem("userName");
-    if (savedName) {
-      handleJoin(savedName);
-    }
+    const init = async () => {
+      const data = await fetchVotes();
+      const savedName = localStorage.getItem("userName");
+      if (savedName) {
+        setName(savedName);
+        if (data) {
+          const userDates = data
+            .filter((v: DateVote) => v.voters.includes(savedName))
+            .map((v: DateVote) => v.date);
+          setSelectedDates(userDates);
+        }
+      }
+    };
+    init();
   }, []);
 
   const fetchVotes = async () => {
@@ -28,20 +37,20 @@ export default function Home() {
       if (res.ok) {
         const data = await res.json();
         setVotes(data);
+        return data;
       }
     } catch (error) {
       console.error("Failed to fetch votes", error);
     } finally {
       setLoading(false);
     }
+    return [];
   };
 
   const handleJoin = (userName: string) => {
     setName(userName);
     localStorage.setItem("userName", userName);
-    // Try to restore user's previous selection if we had persistence, 
-    // but here we start fresh or could try to find in `votes` (reverse lookup).
-    // Let's do a reverse lookup to pre-fill if they rejoin with same name!
+    // For manual join, votes state should already be populated
     const userDates = votes
       .filter(v => v.voters.includes(userName))
       .map(v => v.date);
