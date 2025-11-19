@@ -1,50 +1,18 @@
 import { NextResponse } from "next/server";
 import { DateVote } from "@/types";
-import fs from "fs/promises";
-import path from "path";
+import { kv } from "@vercel/kv";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DATA_FILE = path.join(DATA_DIR, "votes.json");
-
-// Helper to ensure data directory and file exist
-async function ensureDataFile() {
-    try {
-        await fs.access(DATA_FILE);
-    } catch {
-        try {
-            await fs.mkdir(DATA_DIR, { recursive: true });
-            await fs.writeFile(DATA_FILE, JSON.stringify([]), "utf-8");
-        } catch (error) {
-            console.error("Failed to initialize data file", error);
-        }
-    }
-}
-
-// Helper to read votes
-async function readVotes(): Promise<DateVote[]> {
-    await ensureDataFile();
-    try {
-        const data = await fs.readFile(DATA_FILE, "utf-8");
-        return JSON.parse(data);
-    } catch (error) {
-        console.error("Failed to read votes", error);
-        return [];
-    }
-}
-
-// Helper to write votes
-async function writeVotes(votes: DateVote[]) {
-    await ensureDataFile();
-    try {
-        await fs.writeFile(DATA_FILE, JSON.stringify(votes, null, 2), "utf-8");
-    } catch (error) {
-        console.error("Failed to write votes", error);
-    }
-}
+const KV_KEY = "availability_votes";
 
 export async function GET() {
-    const votes = await readVotes();
-    return NextResponse.json(votes);
+    try {
+        const votes = await kv.get<DateVote[]>(KV_KEY);
+        return NextResponse.json(votes || []);
+    } catch (error) {
+        console.error("KV Error", error);
+        // Fallback to empty array if KV fails (e.g. missing env vars locally)
+        return NextResponse.json([]);
+    }
 }
 
 export async function POST(request: Request) {
@@ -56,13 +24,13 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Invalid data" }, { status: 400 });
         }
 
-        const currentVotes = await readVotes();
+        const currentVotes = (await kv.get<DateVote[]>(KV_KEY)) || [];
 
         // Reconstruct the Map-like structure for easier manipulation
         // Map<DateString, Set<UserName>>
         const voteMap = new Map<string, Set<string>>();
 
-        // Populate map from current file data
+        // Populate map from current data
         currentVotes.forEach(v => {
             voteMap.set(v.date, new Set(v.voters));
         });
@@ -92,7 +60,7 @@ export async function POST(request: Request) {
             }
         });
 
-        await writeVotes(newVotes);
+        await kv.set(KV_KEY, newVotes);
 
         return NextResponse.json(newVotes);
     } catch (error) {
