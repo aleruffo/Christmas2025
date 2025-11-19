@@ -13,9 +13,13 @@ export default function Home() {
   const [votes, setVotes] = useState<DateVote[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch initial votes
+  // Fetch initial votes and check local storage
   useEffect(() => {
     fetchVotes();
+    const savedName = localStorage.getItem("userName");
+    if (savedName) {
+      handleJoin(savedName);
+    }
   }, []);
 
   const fetchVotes = async () => {
@@ -34,6 +38,7 @@ export default function Home() {
 
   const handleJoin = (userName: string) => {
     setName(userName);
+    localStorage.setItem("userName", userName);
     // Try to restore user's previous selection if we had persistence, 
     // but here we start fresh or could try to find in `votes` (reverse lookup).
     // Let's do a reverse lookup to pre-fill if they rejoin with same name!
@@ -99,7 +104,10 @@ export default function Home() {
                     Hi, <span className="text-primary">{name}</span>!
                   </h2>
                   <button
-                    onClick={() => setName(null)}
+                    onClick={() => {
+                      setName(null);
+                      localStorage.removeItem("userName");
+                    }}
                     className="text-sm text-muted-foreground hover:text-primary transition-colors"
                   >
                     Change Name

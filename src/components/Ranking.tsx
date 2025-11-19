@@ -61,9 +61,16 @@ export function Ranking({ votes }: RankingProps) {
                         </div>
 
                         {index === 0 && (
-                            <div className="absolute -right-2 -top-2 text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded-full font-bold shadow-sm transform rotate-12 border border-yellow-200">
-                                #1
-                            </div>
+                            <>
+                                <div className="absolute -right-2 -top-2 text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded-full font-bold shadow-sm transform rotate-12 border border-yellow-200">
+                                    #1
+                                </div>
+                                {vote.voters.length > 0 && (
+                                    <div className="mt-2 text-xs text-muted-foreground">
+                                        <span className="font-medium text-foreground">Voters:</span> {vote.voters.join(", ")}
+                                    </div>
+                                )}
+                            </>
                         )}
                     </motion.div>
                 ))}
