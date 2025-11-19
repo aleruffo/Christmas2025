@@ -1,65 +1,126 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect } from "react";
+import { UserEntry } from "@/components/UserEntry";
+import { Calendar } from "@/components/Calendar";
+import { Ranking } from "@/components/Ranking";
+import { DateVote } from "@/types";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function Home() {
+  const [name, setName] = useState<string | null>(null);
+  const [selectedDates, setSelectedDates] = useState<string[]>([]);
+  const [votes, setVotes] = useState<DateVote[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch initial votes
+  useEffect(() => {
+    fetchVotes();
+  }, []);
+
+  const fetchVotes = async () => {
+    try {
+      const res = await fetch("/api/availability");
+      if (res.ok) {
+        const data = await res.json();
+        setVotes(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch votes", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleJoin = (userName: string) => {
+    setName(userName);
+    // Try to restore user's previous selection if we had persistence, 
+    // but here we start fresh or could try to find in `votes` (reverse lookup).
+    // Let's do a reverse lookup to pre-fill if they rejoin with same name!
+    const userDates = votes
+      .filter(v => v.voters.includes(userName))
+      .map(v => v.date);
+    setSelectedDates(userDates);
+  };
+
+  const handleToggleDate = async (date: string) => {
+    if (!name) return;
+
+    const newDates = selectedDates.includes(date)
+      ? selectedDates.filter(d => d !== date)
+      : [...selectedDates, date];
+
+    setSelectedDates(newDates);
+
+    // Optimistic update? Or just wait for server?
+    // Let's send to server immediately
+    try {
+      const res = await fetch("/api/availability", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, dates: newDates }),
+      });
+
+      if (res.ok) {
+        const updatedVotes = await res.json();
+        setVotes(updatedVotes);
+      }
+    } catch (error) {
+      console.error("Failed to update availability", error);
+    }
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <main className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-cyan-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 p-4 md:p-8">
+      <div className="max-w-4xl mx-auto">
+        <header className="text-center mb-12 pt-8">
+          <h1 className="text-4xl md:text-6xl font-extrabold bg-gradient-to-r from-indigo-500 to-cyan-500 bg-clip-text text-transparent mb-4 tracking-tight">
+            Availability Check
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-muted-foreground text-lg">
+            Find the best day for everyone.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+        </header>
+
+        <AnimatePresence mode="wait">
+          {!name ? (
+            <UserEntry key="entry" onJoin={handleJoin} />
+          ) : (
+            <motion.div
+              key="dashboard"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="grid md:grid-cols-2 gap-8 items-start"
+            >
+              <div className="space-y-6">
+                <div className="flex items-center justify-between px-2">
+                  <h2 className="text-xl font-semibold">
+                    Hi, <span className="text-primary">{name}</span>!
+                  </h2>
+                  <button
+                    onClick={() => setName(null)}
+                    className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                  >
+                    Change Name
+                  </button>
+                </div>
+                <Calendar
+                  selectedDates={selectedDates}
+                  onToggleDate={handleToggleDate}
+                />
+                <p className="text-center text-sm text-muted-foreground">
+                  Tap dates to toggle availability.
+                </p>
+              </div>
+
+              <div>
+                <Ranking votes={votes} />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </main>
   );
 }
