@@ -22,7 +22,7 @@ export function Ranking({ votes }: RankingProps) {
     }
 
     return (
-        <div className="w-full max-w-md mx-auto bg-card/50 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-xl mt-8">
+        <div className="w-full max-w-md mx-auto bg-card/50 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-xl md:mt-13 ">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                 <span className="text-xl">🏆</span> Top Dates
             </h3>
@@ -60,14 +60,14 @@ export function Ranking({ votes }: RankingProps) {
                             />
                         </div>
 
-                        {index === 0 && (
+                        {index < 3 && (
                             <>
-                                <div className="absolute -right-2 -top-2 text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded-full font-bold shadow-sm transform rotate-12 border border-yellow-200">
-                                    #1
-                                </div>
-                                {vote.voters.length > 0 && (
+                                {vote.voters && vote.voters.length > 0 && (
                                     <div className="mt-2 text-xs text-muted-foreground">
-                                        <span className="font-medium text-foreground">Voters:</span> {vote.voters.join(", ")}
+                                        <span className="font-medium text-foreground">Voters:</span>{" "}
+                                        {vote.voters
+                                            .map((name) => name.charAt(0).toUpperCase() + name.slice(1))
+                                            .join(", ")}
                                     </div>
                                 )}
                             </>
